@@ -7,13 +7,13 @@ use xml::escape::escape_str_pcdata;
 
 #[rstest]
 fn propfind_dir(server: TestServer) -> Result<(), Error> {
-    let resp = fetch!(b"PROPFIND", format!("{}dira", server.url())).send()?;
+    let resp = fetch!(b"PROPFIND", format!("{}dir1", server.url())).send()?;
     assert_eq!(resp.status(), 207);
     let body = resp.text()?;
-    assert!(body.contains("<D:href>/dira/</D:href>"));
-    assert!(body.contains("<D:displayname>dira</D:displayname>"));
+    assert!(body.contains("<D:href>/dir1/</D:href>"));
+    assert!(body.contains("<D:displayname>dir1</D:displayname>"));
     for f in FILES {
-        assert!(body.contains(&format!("<D:href>/dira/{}</D:href>", utils::encode_uri(f))));
+        assert!(body.contains(&format!("<D:href>/dir1/{}</D:href>", utils::encode_uri(f))));
         assert!(body.contains(&format!(
             "<D:displayname>{}</D:displayname>",
             escape_str_pcdata(f)
@@ -24,19 +24,30 @@ fn propfind_dir(server: TestServer) -> Result<(), Error> {
 
 #[rstest]
 fn propfind_dir_depth0(server: TestServer) -> Result<(), Error> {
-    let resp = fetch!(b"PROPFIND", format!("{}dira", server.url()))
+    let resp = fetch!(b"PROPFIND", format!("{}dir1", server.url()))
         .header("depth", "0")
         .send()?;
     assert_eq!(resp.status(), 207);
     let body = resp.text()?;
-    assert!(body.contains("<D:href>/dira/</D:href>"));
-    assert!(body.contains("<D:displayname>dira</D:displayname>"));
+    assert!(body.contains("<D:href>/dir1/</D:href>"));
+    assert!(body.contains("<D:displayname>dir1</D:displayname>"));
     assert_eq!(
         body.lines()
             .filter(|v| *v == "<D:status>HTTP/1.1 200 OK</D:status>")
             .count(),
         1
     );
+    Ok(())
+}
+
+#[rstest]
+fn propfind_dir_depth2(server: TestServer) -> Result<(), Error> {
+    let resp = fetch!(b"PROPFIND", format!("{}dir1", server.url()))
+        .header("depth", "2")
+        .send()?;
+    assert_eq!(resp.status(), 400);
+    let body = resp.text()?;
+    assert_eq!(body, "Invalid depth: only 0 and 1 are allowed.");
     Ok(())
 }
 
@@ -49,7 +60,7 @@ fn propfind_404(server: TestServer) -> Result<(), Error> {
 
 #[rstest]
 fn propfind_double_slash(server: TestServer) -> Result<(), Error> {
-    let resp = fetch!(b"PROPFIND", format!("{}/", server.url())).send()?;
+    let resp = fetch!(b"PROPFIND", server.url()).send()?;
     assert_eq!(resp.status(), 207);
     Ok(())
 }
@@ -102,7 +113,7 @@ fn mkcol_not_allow_upload(server: TestServer) -> Result<(), Error> {
 
 #[rstest]
 fn mkcol_already_exists(#[with(&["-A"])] server: TestServer) -> Result<(), Error> {
-    let resp = fetch!(b"MKCOL", format!("{}dira", server.url())).send()?;
+    let resp = fetch!(b"MKCOL", format!("{}dir1", server.url())).send()?;
     assert_eq!(resp.status(), 405);
     Ok(())
 }

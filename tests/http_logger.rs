@@ -1,7 +1,8 @@
+mod digest_auth_util;
 mod fixtures;
 mod utils;
 
-use diqwest::blocking::WithDigestAuth;
+use digest_auth_util::send_with_digest_auth;
 use fixtures::{port, tmpdir, wait_for_port, Error};
 
 use assert_cmd::prelude::*;
@@ -11,8 +12,8 @@ use std::io::Read;
 use std::process::{Command, Stdio};
 
 #[rstest]
-#[case(&["-a", "/@user:pass", "--log-format", "$remote_user"], false)]
-#[case(&["-a", "/@user:pass", "--log-format", "$remote_user", "--auth-method", "basic"], true)]
+#[case(&["-a", "user:pass@/:rw", "--log-format", "$remote_user"], false)]
+#[case(&["-a", "user:pass@/:rw", "--log-format", "$remote_user"], true)]
 fn log_remote_user(
     tmpdir: TempDir,
     port: u16,
@@ -31,17 +32,17 @@ fn log_remote_user(
 
     let stdout = child.stdout.as_mut().expect("Failed to get stdout");
 
-    let req = fetch!(b"GET", &format!("http://localhost:{}", port));
+    let req_builder = fetch!(b"GET", &format!("http://localhost:{port}"));
 
     let resp = if is_basic {
-        req.basic_auth("user", Some("pass")).send()?
+        req_builder.basic_auth("user", Some("pass")).send()?
     } else {
-        req.send_with_digest_auth("user", "pass")?
+        send_with_digest_auth(req_builder, "user", "pass")?
     };
 
     assert_eq!(resp.status(), 200);
 
-    let mut buf = [0; 1000];
+    let mut buf = [0; 2048];
     let buf_len = stdout.read(&mut buf)?;
     let output = std::str::from_utf8(&buf[0..buf_len])?;
 
@@ -66,13 +67,15 @@ fn no_log(tmpdir: TempDir, port: u16, #[case] args: &[&str]) -> Result<(), Error
 
     let stdout = child.stdout.as_mut().expect("Failed to get stdout");
 
-    let resp = fetch!(b"GET", &format!("http://localhost:{}", port)).send()?;
+    let resp = fetch!(b"GET", &format!("http://localhost:{port}")).send()?;
     assert_eq!(resp.status(), 200);
 
-    let mut buf = [0; 1000];
+    let mut buf = [0; 2048];
     let buf_len = stdout.read(&mut buf)?;
     let output = std::str::from_utf8(&buf[0..buf_len])?;
 
     assert_eq!(output.lines().last().unwrap(), "");
+
+    child.kill()?;
     Ok(())
 }

@@ -11,9 +11,19 @@ use std::time::{Duration, Instant};
 #[allow(dead_code)]
 pub type Error = Box<dyn std::error::Error>;
 
+#[allow(dead_code)]
+pub const BIN_FILE: &str = "😀.bin";
+
 /// File names for testing purpose
 #[allow(dead_code)]
-pub static FILES: &[&str] = &["test.txt", "test.html", "index.html", "😀.bin"];
+pub static FILES: &[&str] = &[
+    "test.txt",
+    "test.html",
+    "index.html",
+    #[cfg(not(target_os = "windows"))]
+    "file\n1.txt",
+    BIN_FILE,
+];
 
 /// Directory names for testing directory don't exist
 #[allow(dead_code)]
@@ -33,7 +43,7 @@ pub static DIR_ASSETS: &str = "dir-assets/";
 
 /// Directory names for testing purpose
 #[allow(dead_code)]
-pub static DIRECTORIES: &[&str] = &["dira/", "dirb/", "dirc/", DIR_NO_INDEX, DIR_GIT, DIR_ASSETS];
+pub static DIRECTORIES: &[&str] = &["dir1/", "dir2/", "dir3/", DIR_NO_INDEX, DIR_GIT, DIR_ASSETS];
 
 /// Test fixture which creates a temporary directory with a few files and directories inside.
 /// The directories also contain files.
@@ -42,29 +52,61 @@ pub static DIRECTORIES: &[&str] = &["dira/", "dirb/", "dirc/", DIR_NO_INDEX, DIR
 pub fn tmpdir() -> TempDir {
     let tmpdir = assert_fs::TempDir::new().expect("Couldn't create a temp dir for tests");
     for file in FILES {
-        tmpdir
-            .child(file)
-            .write_str(&format!("This is {}", file))
-            .expect("Couldn't write to file");
+        if *file == BIN_FILE {
+            tmpdir.child(file).write_binary(b"bin\0\x00123").unwrap();
+        } else {
+            tmpdir
+                .child(file)
+                .write_str(&format!("This is {file}"))
+                .unwrap();
+        }
     }
     for directory in DIRECTORIES {
         if *directory == DIR_ASSETS {
             tmpdir
                 .child(format!("{}{}", directory, "index.html"))
-                .write_str("__ASSERTS_PREFIX__index.js;DATA = __INDEX_DATA__")
-                .expect("Couldn't write to file");
+                .write_str("__ASSETS_PREFIX__index.js;<template id=\"index-data\">__INDEX_DATA__</template>")
+                .unwrap();
         } else {
             for file in FILES {
                 if *directory == DIR_NO_INDEX && *file == "index.html" {
                     continue;
                 }
-                tmpdir
-                    .child(format!("{}{}", directory, file))
-                    .write_str(&format!("This is {}{}", directory, file))
-                    .expect("Couldn't write to file");
+                if *file == BIN_FILE {
+                    tmpdir
+                        .child(format!("{directory}{file}"))
+                        .write_binary(b"bin\0\x00123")
+                        .unwrap();
+                } else {
+                    tmpdir
+                        .child(format!("{directory}{file}"))
+                        .write_str(&format!("This is {directory}{file}"))
+                        .unwrap();
+                }
             }
         }
     }
+    tmpdir.child("dir4/hidden").touch().unwrap();
+    tmpdir
+        .child("content-types/bin.tar")
+        .write_binary(b"\x7f\x45\x4c\x46\x02\x01\x00\x00")
+        .unwrap();
+    tmpdir
+        .child("content-types/bin")
+        .write_binary(b"\x7f\x45\x4c\x46\x02\x01\x00\x00")
+        .unwrap();
+    tmpdir
+        .child("content-types/file-utf8.txt")
+        .write_str("世界")
+        .unwrap();
+    tmpdir
+        .child("content-types/file-gbk.txt")
+        .write_binary(b"\xca\xc0\xbd\xe7")
+        .unwrap();
+    tmpdir
+        .child("content-types/file")
+        .write_str("世界")
+        .unwrap();
 
     tmpdir
 }
@@ -104,15 +146,15 @@ where
     TestServer::new(port, tmpdir, child, is_tls)
 }
 
-/// Wait a max of 1s for the port to become available.
+/// Wait a max of 2s for the port to become available.
 pub fn wait_for_port(port: u16) {
     let start_wait = Instant::now();
 
-    while !port_check::is_port_reachable(format!("localhost:{}", port)) {
-        sleep(Duration::from_millis(100));
+    while !port_check::is_port_reachable(format!("localhost:{port}")) {
+        sleep(Duration::from_millis(250));
 
-        if start_wait.elapsed().as_secs() > 1 {
-            panic!("timeout waiting for port {}", port);
+        if start_wait.elapsed().as_secs() > 2 {
+            panic!("timeout waiting for port {port}");
         }
     }
 }
